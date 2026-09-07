@@ -1,0 +1,3 @@
+[submodule "host/external/dxgi-capture"]
+	path = host/external/dxgi-capture
+	url = https://github.com/why-sobi/DXGI-CAPTURE.git
