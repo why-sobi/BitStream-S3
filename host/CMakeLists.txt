@@ -20,6 +20,8 @@ add_subdirectory(external/dxgi-capture)
 add_executable(BitStreamer-S3 
     src/main.cpp
     src/impl.cpp
+    src/host.cpp
+    src/network.cpp
 )
 
 target_include_directories(BitStreamer-S3 PRIVATE 

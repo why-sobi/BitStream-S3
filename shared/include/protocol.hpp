@@ -10,10 +10,10 @@ constexpr uint16_t HOST_INPUT_PORT     = 8090; // Receives input/telemetry from 
 // ESP32 Node 1 Configuration (Video + Dual Core Execution)
 constexpr uint16_t ESP1_VID_PORT_CORE0 = 8080; // Core 0: Processes Top Frame Half
 constexpr uint16_t ESP1_VID_PORT_CORE1 = 8081; // Core 1: Processes Bottom Frame Half
-constexpr uint16_t ESP1_INPUT_PORT     = 8082; // Sends touch/button state back to Host
 
 // ESP32 Node 2 Configuration (Audio Node)
 constexpr uint16_t ESP2_AUD_PORT       = 8083; // Core 0: I2S PCM Audio Buffer Pipeline
+constexpr uint16_t ESP2_INPUT_PORT     = 8082; // Core 1: Sends touch/button state back to Host
 
 #pragma pack(push, 1) // enforces no padded bytes (allow misaligned data structures)
 // Fixed Header size = (1 + 1 + 2 + 1 + 1 + 2) = 8 bytes
