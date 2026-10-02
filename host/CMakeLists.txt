@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(BitStreamer-S3 CXX)
+project(BitStreamer-S3-Host CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,27 +16,32 @@ endif()
 # 1. Add the submodule CMake target
 add_subdirectory(external/dxgi-capture)
 
-# 2. Add your executable (canvas.cpp is now managed inside dxgi_canvas!)
-add_executable(BitStreamer-S3 
+# 2. Add your executable
+add_executable(BitStreamer-S3-Host 
     src/main.cpp
     src/impl.cpp
     src/host.cpp
     src/network.cpp
+    ${LIBS_DIR}/jpge/jpge.cpp
 )
 
-target_include_directories(BitStreamer-S3 PRIVATE 
+target_compile_definitions(BitStreamer-S3-Host PRIVATE BITSTREAM_BUILD_HOST)
+
+target_include_directories(BitStreamer-S3-Host PRIVATE 
     ${LIBS_DIR}/stb
     ${LIBS_DIR}/asio/include
+    ${LIBS_DIR}/jpge/
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
 )
+
 
 # Windows requires linking Winsock2 explicitly
 if(WIN32)
-    target_link_libraries(BitStreamer-S3 PRIVATE ws2_32 mswsock)
+    target_link_libraries(BitStreamer-S3-Host PRIVATE ws2_32 mswsock)
 endif()
 
 # 3. Link against the dxgi_canvas library target
-target_link_libraries(BitStreamer-S3 PRIVATE
+target_link_libraries(BitStreamer-S3-Host PRIVATE
     dxgi_capture
 )

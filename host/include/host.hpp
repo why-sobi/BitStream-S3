@@ -1,28 +1,30 @@
+// host/include/host.hpp
 #pragma once
 
 #include "stb_image_resize2.h"
 #include "canvas.hpp"
-#include "pixels.hpp"
 #include "network.hpp"
-#include "protocol.hpp"
+
+#include "shared/include/protocol.hpp"
+#include "shared/include/view.hpp"
+#include "shared/include/jpeg.hpp"
 
 #include <vector>
 #include <cstdint>
 #include <cstddef>
 #include <tuple>
-#include <mdspan>
 
 class BitStreamHost {
     DesktopCanvas canvas;
     NetworkEngine network;
 
-    std::vector<uint8_t> low_res; // down sampling buffer to the resized params
-    std::vector<uint8_t> packed;  // this holds the payload to be sent over the network
+    std::vector<uint8_t> low_res; // Downsampled RGB888 image buffer
+    JPEG::JPEG jpeg_frame;        // Current encoded JPEG frame
 
-    std::mdspan<const uint8_t, std::dextents<size_t, 2>> view; // this is only for read, no write will be performed to it (C++23 shorthand for 2 dynamic dimensions (Height, Width))
-    size_t original_width, original_height;
-    size_t resized_width, resized_height;
-    PixelFormat format;
+    ImageView2D<const uint8_t> view;
+    size_t original_width{0}, original_height{0};
+    size_t resized_width{0},  resized_height{0};
+    uint8_t jpeg_quality{75};
 
     uint16_t frame_sequence_id{0};
 
@@ -31,17 +33,17 @@ public:
         size_t resized_width, 
         size_t resized_height, 
         const std::vector<Device>& devices,
-        PixelFormat format = PIXEL_FORMAT_RGB565,
+        uint8_t jpeg_quality = 75,
         uint16_t host_listen_port = HOST_INPUT_PORT
     );
 
-    void tick(); // this captures and resizing populating the low_res buffer
+    void tick();
     void setup_payload();
     bool send_payload();
-
-    // Clean unified execution step driving capture -> downsample -> pack -> chunk -> transmit
     void step();
 
-    // Check for inbound telemetry/inputs from clients
     size_t poll_inputs(std::span<uint8_t> out_buffer);
+
+    size_t get_last_frame_bytes() const { return this->jpeg_frame.size(); }
+    double get_current_mbps(double target_fps = 30.0) const { return (static_cast<double>(this->jpeg_frame.size() * 8) * target_fps) / 1'000'000.0; }
 };

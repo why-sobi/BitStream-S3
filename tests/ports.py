@@ -1,28 +1,108 @@
-# This file tests whether the network from the host side is working correctly by listening to the ports of the HOST device itself set to the ESP's port
 import socket
-import threading
+import struct
+import io
+import time
+import pygame
+from PIL import Image
 
-def esp32_core_listener(port, core_name):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("127.0.0.1", port))
-    print(f"[{core_name}] Listening on UDP port {port}...")
+UDP_IP = "127.0.0.1"
+UDP_PORT = 8080
+HEADER_FORMAT = "<BBHBBH"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+PROTOCOL_MAGIC = 0xB3
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((800, 480))
+    pygame.display.set_caption("BitStream MJPEG Receiver")
     
-    packet_count = 0
-    total_bytes = 0
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((UDP_IP, UDP_PORT))
+    sock.setblocking(False)
 
-    while True:
-        data, addr = sock.recvfrom(2048)
-        packet_count += 1
-        total_bytes += len(data)
-        
-        # Check for Magic Byte 0xB3
-        magic = hex(data[0]) if len(data) > 0 else "0x0"
-        
-        if packet_count % 60 == 0: # Print status roughly every second at 60fps
-            print(f"[{core_name}] Recv {packet_count} packets | Total Bytes: {total_bytes} | Last Magic: {magic}")
+    current_seq = -1
+    chunks = {}
+    
+    # Stats tracking
+    frames_rendered = 0
+    total_bytes_received = 0
+    dropped_frames = 0
+    last_seq = -1
+    stat_start_time = time.time()
 
-# Start Core 0 (Port 8080) and Core 1 (Port 8081) on background threads
-threading.Thread(target=esp32_core_listener, args=(8080, "ESP32 Core 0"), daemon=True).start()
-threading.Thread(target=esp32_core_listener, args=(8081, "ESP32 Core 1"), daemon=True).start()
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
 
-input("Press Enter to stop mock server...\n")
+        while True:
+            try:
+                data, _ = sock.recvfrom(2048)
+            except BlockingIOError:
+                break
+
+            if len(data) < HEADER_SIZE:
+                continue
+
+            total_bytes_received += len(data)
+            magic, msg_type, seq_id, chunk_idx, total_chunks, payload_len = struct.unpack(
+                HEADER_FORMAT, data[:HEADER_SIZE]
+            )
+
+            if magic != PROTOCOL_MAGIC:
+                continue
+
+            payload = data[HEADER_SIZE : HEADER_SIZE + payload_len]
+
+            # Sequence tracking for dropped frames
+            if seq_id != current_seq:
+                if last_seq != -1 and seq_id > (last_seq + 1):
+                    dropped_frames += (seq_id - last_seq - 1)
+                last_seq = seq_id
+                current_seq = seq_id
+                chunks.clear()
+
+            chunks[chunk_idx] = payload
+
+            # Frame Complete!
+            if len(chunks) == total_chunks:
+                try:
+                    jpeg_bytes = b"".join(chunks[i] for i in range(total_chunks))
+                    img = Image.open(io.BytesIO(jpeg_bytes))
+                    pygame_surface = pygame.image.fromstring(
+                        img.tobytes(), img.size, img.mode
+                    )
+
+                    screen.blit(pygame_surface, (0, 0))
+                    pygame.display.flip()
+                    frames_rendered += 1
+                except Exception:
+                    pass
+
+                chunks.clear()
+
+        # Update HUD stats every second
+        now = time.time()
+        elapsed = now - stat_start_time
+        if elapsed >= 1.0:
+            rx_fps = frames_rendered / elapsed
+            mbps = (total_bytes_received * 8) / (elapsed * 1_000_000)
+            
+            title = f"BitStream Receiver | FPS: {rx_fps:.1f} | Throughput: {mbps:.2f} Mbps | Dropped Frames: {dropped_frames}"
+            pygame.display.set_caption(title)
+            print(f"[Rx Stats] Rendered FPS: {rx_fps:.1f} | Network Bitrate: {mbps:.2f} Mbps | Dropped: {dropped_frames}")
+
+            # Reset
+            frames_rendered = 0
+            total_bytes_received = 0
+            dropped_frames = 0
+            stat_start_time = time.time()
+
+        time.sleep(0.001)  # Micro-sleep to prevent 100% CPU core pinning
+
+    pygame.quit()
+    sock.close()
+
+if __name__ == "__main__":
+    main()
