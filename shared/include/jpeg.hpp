@@ -6,9 +6,10 @@
 #include <cstdint>
 #include <cstddef>
 #include <stdexcept>
+#include <string>
 
 #if defined(BITSTREAM_BUILD_HOST)
-#include "jpge.h"
+#include <turbojpeg.h>
 #endif
 
 namespace JPEG {
@@ -21,51 +22,62 @@ namespace JPEG {
     };
 
     #if defined(BITSTREAM_BUILD_HOST)
+    
+    /// @brief Encodes a raw RGB888 view into a JPEG byte payload in RAM.
+    /// Uses a persistent static TurboJPEG handle for maximum single-threaded throughput.
     inline JPEG encode(ImageView2D<const uint8_t> view, int quality = 75) {
+        // Persistent handle: Initialized ONCE on the first frame encode
+        static tjhandle compressor = []() {
+            tjhandle h = tjInitCompress();
+            if (!h) {
+                throw std::runtime_error("Failed to initialize TurboJPEG compressor: " + std::string(tjGetErrorStr()));
+            }
+            return h;
+        }();
+
         JPEG result;
 
         int width = static_cast<int>(view.width);
         int height = static_cast<int>(view.height);
 
-        // Allocate max output buffer capacity
-        int out_buf_size = width * height * 3;
-        result.buffer.resize(out_buf_size);
+        // 1. Query exact worst-case upper bound for output JPEG buffer size
+        unsigned long max_buf_size = tjBufSize(width, height, TJSAMP_420);
+        result.buffer.resize(max_buf_size);
 
-        jpge::params params;
-        params.m_quality = quality;
-        params.m_subsampling = jpge::H2V2; // 4:2:0 chroma subsampling for low Wi-Fi bandwidth
+        // 2. Setup parameters for compression
+        unsigned char* jpeg_buf = reinterpret_cast<unsigned char*>(result.buffer.data());
+        unsigned long jpeg_size = max_buf_size;
+        int pitch = 0; // Tightly packed rows (width * 3)
 
-        // reinterpret_cast: Tells the compiler, "Trust me, these bytes are jpge::uint8 bytes."
-        // const_cast: Tells the compiler, "Yes, I am intentionally overriding the read-only check to satisfy this library's API signature."
-
-        jpge::uint8* pImage_data = const_cast<jpge::uint8*>(
-            reinterpret_cast<const jpge::uint8*>(view.data)
-        );
-
-        // Correct signature: 7 arguments total
-        bool success = jpge::compress_image_to_jpeg_file_in_memory(
-            result.buffer.data(),
-            out_buf_size,      // Reference parameter; modified in-place to actual JPEG byte size
+        // 3. Compress frame using the persistent static handle (0 handle allocation calls!)
+        int status = tjCompress2(
+            compressor,
+            reinterpret_cast<const unsigned char*>(view.data),
             width,
+            pitch,
             height,
-            3,                 // 3 channels (RGB888)
-            pImage_data,       // Pixel data pointer
-            params
+            TJPF_RGB,        // Use TJPF_BGRA here if DXGI outputs 32-bit BGRA directly
+            &jpeg_buf,
+            &jpeg_size,
+            TJSAMP_420,      // 4:2:0 subsampling
+            quality,
+            TJFLAG_NOREALLOC // Use std::vector allocated memory directly
         );
 
-        if (!success) {
-            throw std::runtime_error("jpge JPEG compression failed");
+        if (status != 0) {
+            throw std::runtime_error(std::string("TurboJPEG encoding failed: ") + tjGetErrorStr());
         }
 
-        // Shrink vector to actual encoded JPEG length
-        result.buffer.resize(out_buf_size);
+        // 4. Shrink vector down to actual compressed JPEG byte length
+        result.buffer.resize(jpeg_size);
+
         return result;
     }
     #endif
         
-        // ----------------------------------------------------------------------------
-        // CLIENT / ESP32 ENVIRONMENT (Decoder Implementation)
-        // ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
+    // CLIENT / ESP32 ENVIRONMENT (Decoder Implementation)
+    // ----------------------------------------------------------------------------
     #if defined(BITSTREAM_BUILD_ESP32)
         
         /// @brief Decodes a JPEG byte payload into a raw RGB888 / RGB565 view in PSRAM.

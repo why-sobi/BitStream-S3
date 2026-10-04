@@ -14,15 +14,17 @@
 void print_usage(const char* prog_name) {
     std::cout << "Usage: " << prog_name << " [options]\n"
               << "Options:\n"
-              << "  -w, --width <int>     Target width (default: 800)\n"
-              << "  -h, --height <int>    Target height (default: 480)\n"
-              << "  -q, --quality <int>   JPEG quality 1-100 (default: 70)\n"
-              << "  -f, --fps <int>       Target FPS cap (default: 60)\n"
-              << "  --help                Show this help message\n";
+              << "  -i, --ip <string>      Target IP address (default: 127.0.0.1)\n"
+              << "  -w, --width <int>      Target width (default: 800)\n"
+              << "  -h, --height <int>     Target height (default: 480)\n"
+              << "  -q, --quality <int>    JPEG quality 1-100 (default: 70)\n"
+              << "  -f, --fps <int>        Target FPS cap (default: 60)\n"
+              << "  --help                 Show this help message\n";
 }
 
 int main(int argc, char* argv[]) {
     // 1. Default CLI Configuration Parameters
+    std::string ip = "127.0.0.1";
     int width = 800;
     int height = 480;
     int quality = 70; // Recommended Q70 for stable ~13 Mbps Wi-Fi stream
@@ -31,7 +33,9 @@ int main(int argc, char* argv[]) {
     // 2. Simple Command-Line Argument Parser
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if ((arg == "-w" || arg == "--width") && i + 1 < argc) {
+        if ((arg == "-i" || arg == "--ip") && i + 1 < argc) {
+            ip = argv[++i];
+        } else if ((arg == "-w" || arg == "--width") && i + 1 < argc) {
             width = std::stoi(argv[++i]);
         } else if ((arg == "-h" || arg == "--height") && i + 1 < argc) {
             height = std::stoi(argv[++i]);
@@ -47,9 +51,10 @@ int main(int argc, char* argv[]) {
 
     std::cout << "========================================\n"
               << " BitStreamHost Configuration\n"
-              << " - Resolution : " << width << "x" << height << "\n"
-              << " - JPEG Quality: " << quality << "\n"
-              << " - Target FPS  : " << target_fps << "\n"
+              << " - Target IP Address : " << ip << "\n"
+              << " - Resolution        : " << width << "x" << height << "\n"
+              << " - Target FPS        : " << target_fps << "\n"
+              << " - JPEG Quality      : " << quality << "\n"
               << "========================================\n";
 
     // Request 1ms scheduler granularity from Windows OS
@@ -59,7 +64,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<Device> targets = {
         {
-            .ip = "127.0.0.1",
+            .ip = ip,
             .ports = { ESP1_VID_PORT_CORE0 }
         }
     };
